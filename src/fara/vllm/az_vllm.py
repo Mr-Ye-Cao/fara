@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from .vllm_facade import VLLM, Status
+from vllm_facade import VLLM, Status
 
 try:
     from aztool.azcp import AzFolder, LocalFolder
