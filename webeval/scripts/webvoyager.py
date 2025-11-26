@@ -6,7 +6,7 @@ import os
 import logging
 # from aztool.workspace import Workspace, AIF_WORKSPACE
 import mlflow
-from eval_exp import EvalExp, ModelReference, get_default_vllm_model_config, get_foundry_endpoint_configs
+from eval_exp import EvalExp, ModelReference, get_foundry_endpoint_configs
 from webeval.oai_clients.graceful_client import GracefulRetryClient
 from webeval.eval_result import EvalResult, Stage
 from arg_parsing import get_eval_args
@@ -62,7 +62,12 @@ def main():
             mlflow.log_param('using_external_endpoint', True)
             mlflow.log_param('endpoint_config_path', ','.join([x['base_url'] for x in websurfer_client_cfg]))
         else:
-            websurfer_client_cfg = get_default_vllm_model_config(args.model_port)
+            # For local VLLM, use a simple flat config structure that FaraAgent expects
+            websurfer_client_cfg = {
+                "api_key": "NONE",
+                "model": "gpt-4o-mini-2024-07-18",
+                "base_url": f"http://0.0.0.0:{args.model_port}/v1"
+            }
             if args.web_surfer_client_cfg is not None:
                 websurfer_client_cfg = args.web_surfer_client_cfg        
         if args.web_surfer_kwargs:

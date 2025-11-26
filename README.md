@@ -40,7 +40,7 @@ Then you can iterative query it with:
 fara-cli --task "whats the weather in new york now"
 ```
 
-Hint: might need to do `--tensor-parallel-size 2` if you run out of memory
+Hint: might need to do `--tensor-parallel-size 2` with vllm command if you run out of memory
 
 
 ### What Makes Fara-7B Unique
@@ -280,10 +280,12 @@ Navigate to the scripts directory:
 cd webeval/scripts
 ```
 
+Make sure you set a valid OpenAI GPT-4o endpoint in `endpoint_configs_gpt4o/dev` in order to run the WebVoyager LLM-as-a-judge! 
+
 **Option 1: Self-hosted VLLM**
 
 ```bash
-python webvoyager.py --model_url ../../model_checkpoints/fara-7b/ --model_port 5000 --eval_oai_config ../endpoint_configs_gpt4o/dev/ --out_url /data/data/Fara/eval --device_id 0,1 --processes 1 --run_id 1 --max_rounds 100
+python webvoyager.py --model_url /path/where/you/want/to/download/model/ --model_port 5000 --eval_oai_config ../endpoint_configs_gpt4o/dev/ --out_url /path/to/save/eval/files --device_id 0,1 --processes 1 --run_id 1 --max_rounds 100
 ```
 
 **Option 2: Azure Foundry Deployment**
@@ -291,14 +293,16 @@ python webvoyager.py --model_url ../../model_checkpoints/fara-7b/ --model_port 5
 Deploy [Fara-7B on Foundry endpoint(s)](https://ai.azure.com/explore/models/Fara-7B/version/2/registry/azureml-msr), then place endpoint URLs and keys in JSONs under `endpoint_configs/`:
 
 ```bash
-python webvoyager.py --model_endpoint ../../endpoint_configs/ --eval_oai_config ../endpoint_configs_gpt4o/dev/ --out_url /data/data/Fara/eval --processes 1 --run_id 1_endpoint --max_rounds 100
+python webvoyager.py --model_endpoint ../../endpoint_configs/ --eval_oai_config ../endpoint_configs_gpt4o/dev/ --out_url /path/to/save/eval/files --processes 1 --run_id 1_endpoint --max_rounds 100
 ```
 
 ### Notes
 
+
 - We use the same LLM-as-a-judge prompts and model (GPT-4o) as WebVoyager, hence the `--eval_oai_config` argument
 - Set `--browserbase` for browser session management (requires exported API key and project ID environment variables)
 - Avoid overloading a single VLLM deployment with more than ~10 concurrent processes due to known issues
+- See debugging output in `fara/webeval/scripts/stdout.txt`
 
 ---
 

@@ -8,8 +8,9 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
+import logging
 
-from vllm_facade import VLLM, Status
+from .vllm_facade import VLLM, Status
 
 try:
     from aztool.azcp import AzFolder, LocalFolder
@@ -17,9 +18,47 @@ except ImportError:  # keep old behaviour when aztool missing
     AzFolder = None
     LocalFolder = None
 
+try:
+    from huggingface_hub import snapshot_download
+except ImportError:
+    snapshot_download = None
+
+# Hardcoded HuggingFace model ID for automatic download
+DEFAULT_HF_MODEL_ID = "microsoft/Fara-7B"
+
 
 def _is_azure_blob_url(model_path: str) -> bool:
     return model_path.startswith(("https://", "http://")) and "blob.core.windows.net" in model_path
+
+
+def _download_model_from_hf(output_dir: Path, model_id: str = DEFAULT_HF_MODEL_ID) -> str:
+    """Download model from HuggingFace Hub if not already present."""
+    if snapshot_download is None:
+        raise ImportError(
+            "huggingface_hub is required for automatic model download. "
+            "Install it with: pip install huggingface_hub"
+        )
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    logging.info(f"Downloading {model_id} from HuggingFace to {output_dir}")
+    logging.info("This may take a while depending on your internet connection...")
+
+    try:
+        snapshot_download(
+            repo_id=model_id,
+            local_dir=str(output_dir),
+            local_dir_use_symlinks=False,
+        )
+        logging.info(f"Successfully downloaded model to {output_dir}")
+        return str(output_dir.resolve())
+    except Exception as e:
+        logging.error(f"Error downloading model: {e}")
+        logging.error("If you're getting authentication errors, you may need to:")
+        logging.error("  1. Install huggingface-cli: pip install -U huggingface_hub")
+        logging.error("  2. Login: huggingface-cli login")
+        logging.error("  3. Or set HF_TOKEN environment variable")
+        raise
 
 
 def _extract_model_name(model_url: str) -> str:
@@ -100,8 +139,12 @@ class AzVllm:
                 # It's a local directory
                 model_path = Path(model_url).expanduser()
                 if not model_path.exists():
-                    raise FileNotFoundError(f"Local model directory not found: {model_url}")
-                self.local_model_path = str(model_path.resolve())
+                    # Auto-download from HuggingFace if path doesn't exist
+                    logging.warning(f"Local model directory not found: {model_url}")
+                    logging.info(f"Attempting to download {DEFAULT_HF_MODEL_ID} from HuggingFace...")
+                    self.local_model_path = _download_model_from_hf(model_path)
+                else:
+                    self.local_model_path = str(model_path.resolve())
             self.port = port
 
     def __enter__(self):

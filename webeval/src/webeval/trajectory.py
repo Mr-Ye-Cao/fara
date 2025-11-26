@@ -74,7 +74,52 @@ def remap_action_names(action_name: str) -> str:
         return 'terminate'
     else:
         return action_name  # Return as is if no remapping is needed
-    
+
+def parse_text_based_event(event: Dict) -> Dict | None:
+    """
+    Parse events where thoughts and actions are embedded as text in the message field.
+
+    Expected format:
+    "Thought #X: <thought text>
+    Action #X: executing tool '<tool_name>' with arguments {<json>}"
+
+    Returns a dict with 'action' and 'arguments' fields, or None if not a thought/action event.
+    """
+    import re
+
+    message = event.get('message', '')
+
+    # Check if this is a thought/action message
+    if 'Thought #' not in message or 'Action #' not in message:
+        return None
+
+    try:
+        # Extract thought
+        thought_match = re.search(r'Thought #\d+:\s*(.+?)(?=\nAction #)', message, re.DOTALL)
+        thought = thought_match.group(1).strip() if thought_match else ""
+
+        # Extract action arguments JSON
+        # Pattern: executing tool '<tool_name>' with arguments {json}
+        action_match = re.search(r'with arguments\s+(\{.+\})', message, re.DOTALL)
+        if not action_match:
+            return None
+
+        arguments = json.loads(action_match.group(1))
+
+        # Add thoughts to arguments
+        arguments['thoughts'] = thought
+
+        # Get action name from arguments
+        action_name = arguments.get('action', 'unknown')
+
+        return {
+            'action': action_name,
+            'arguments': arguments
+        }
+    except (json.JSONDecodeError, AttributeError):
+        # Failed to parse - return None
+        return None
+
 class Trajectory:
     def __init__(self, path, gpt_solver = False, skip_web_surfer_log = False):
         self.path = Path(path)
@@ -102,9 +147,21 @@ class Trajectory:
                 metadata = json.load(f)
                 self.is_action = metadata.get("is_action", False)
         
+        # Check if events are text-based (no 'action' field in any event)
+        has_structured_events = any(e.get('action') is not None for e in self.events)
+
+        if not has_structured_events and self.events:
+            # Parse text-based events
+            parsed_events = []
+            for event in self.events:
+                parsed = parse_text_based_event(event)
+                if parsed:
+                    parsed_events.append(parsed)
+            self.events = parsed_events
+
         if gpt_solver:
             #  remove non-WebSurfer events e.g. WebSurfer-SummarizedAction and other miscellaneous comments from solving pipeline
-            self.events = [e for e in self.events if (e.get('source', None) == "WebSurfer" and e.get('action', None) is not None)] 
+            self.events = [e for e in self.events if (e.get('source', None) == "WebSurfer" and e.get('action', None) is not None)]
             # For gpt_solver, normalize events to have action in arguments for compatibility
             for event in self.events:
                 if event.get('action') and 'arguments' in event and isinstance(event['arguments'], dict):
